@@ -28,9 +28,6 @@
         "ts-node": "^10.9.2",
         "typescript": "^5.3.3"
     },
-    "directories": {
-        "test": "test"
-    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/IdrisAkintobi/bitcoin-transaction.git"

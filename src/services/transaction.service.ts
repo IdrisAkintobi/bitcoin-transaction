@@ -97,19 +97,20 @@ export class TransactionService {
 
         // Add the inputs to the Psbt instance
         utxos.forEach((utxo) => {
-            const transactionHash = Buffer.from(utxo.txid, "hex").reverse();
-            const redeemScript = Buffer.from(
-                "a91432971b01a505e62b860ed9c960f98b64252b294287",
+            const nonWitnessUtxo = Buffer.from(
+                "02000000000101b30af604ff8d8ead9f4225638953e02dd507b382e2cfb4c3fc75b4a74c0b64400000000000fdffffff02b9bb01000000000017a91432971b01a505e62b860ed9c960f98b64252b294287269137070100000017a914715329031bfb1b6758222baf8f93ef35f931832e87024730440220320b421d1168a440e1b937e98fa5baa84e857846409605ac17c557df6132ac4202205555ede114d2c520f22907aa8abf197a69851c9deb7c3ed343ddde7192dfe65301210314e15958427ad49ba9c2a886cc8ce399adbf14a8c4721deaad78d45129be4f72384e2700",
                 "hex"
             );
+            const scriptPubKey = Buffer.from(
+                "a91432971b01a505e62b860ed9c960f98b64252b294287", //a914375e90c881f8b7bd4fd61d94f2190fd69099ea6a87
+                "hex"
+            );
+            const redeemScript = script.compile(scriptPubKey);
+            // current error: Error: Redeem script for input #0 doesn't match the scriptPubKey in the prevout
             psbt.addInput({
                 hash: utxo.txid,
                 index: 0,
-                witnessUtxo: {
-                    script: Buffer.from("a91432971b01a505e62b860ed9c960f98b64252b294287", "hex"),
-                    value: 113593,
-                },
-                nonWitnessUtxo: transactionHash,
+                nonWitnessUtxo,
                 redeemScript,
             });
         });
@@ -118,16 +119,16 @@ export class TransactionService {
         psbt.addOutput({
             address: toAddress,
             value: amount,
-            redeemScript: Buffer.from(redeemScriptHex, "hex"),
         });
 
-        // Sign the inputs
-        psbt.signAllInputs(keyPair);
+        // Sign the inputs with the key pair
+        psbt.signInput(0, keyPair);
 
         // Finalize the Psbt instance
         psbt.finalizeAllInputs();
 
         // Return the signed transaction as hex
+        console.log("Signed transaction:", psbt.extractTransaction().toHex());
         return psbt.extractTransaction().toHex();
     }
 
