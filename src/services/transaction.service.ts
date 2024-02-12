@@ -74,8 +74,8 @@ export class TransactionService {
         toAddress: string,
         seed: string,
         appNetwork: Network,
-        redeemScriptHex: string,
-        amount: number
+        amount: number,
+        fee: number
     ) {
         // Create a new Psbt instance
         const psbt = new Psbt({ network: appNetwork });
@@ -93,25 +93,27 @@ export class TransactionService {
 
         // Calculate the total value of the unspent outputs
         const totalValue = utxos.reduce((prev, curr) => prev + curr.value, 0);
-        console.log("Total value of unspent outputs:", totalValue);
+        // Check if the total value is greater than the amount + fee
+        if (totalValue < amount + fee) throw new Error("Insufficient funds");
+
+        // Make sure the scriptPubKey matches the scriptPubKey in the prevout
+        const getRedeemScript = payments.p2sh({
+            redeem: payments.p2wpkh({
+                pubkey: keyPair.publicKey,
+                network: appNetwork,
+            }),
+        });
 
         // Add the inputs to the Psbt instance
         utxos.forEach((utxo) => {
-            const nonWitnessUtxo = Buffer.from(
-                "02000000000101b30af604ff8d8ead9f4225638953e02dd507b382e2cfb4c3fc75b4a74c0b64400000000000fdffffff02b9bb01000000000017a91432971b01a505e62b860ed9c960f98b64252b294287269137070100000017a914715329031bfb1b6758222baf8f93ef35f931832e87024730440220320b421d1168a440e1b937e98fa5baa84e857846409605ac17c557df6132ac4202205555ede114d2c520f22907aa8abf197a69851c9deb7c3ed343ddde7192dfe65301210314e15958427ad49ba9c2a886cc8ce399adbf14a8c4721deaad78d45129be4f72384e2700",
-                "hex"
-            );
-            const scriptPubKey = Buffer.from(
-                "a91432971b01a505e62b860ed9c960f98b64252b294287", //a914375e90c881f8b7bd4fd61d94f2190fd69099ea6a87
-                "hex"
-            );
-            const redeemScript = script.compile(scriptPubKey);
-            // current error: Error: Redeem script for input #0 doesn't match the scriptPubKey in the prevout
             psbt.addInput({
                 hash: utxo.txid,
                 index: 0,
-                nonWitnessUtxo,
-                redeemScript,
+                witnessUtxo: {
+                    script: getRedeemScript.output!,
+                    value: utxo.value,
+                },
+                redeemScript: getRedeemScript.redeem!.output!,
             });
         });
 
@@ -121,14 +123,19 @@ export class TransactionService {
             value: amount,
         });
 
-        // Sign the inputs with the key pair
-        psbt.signInput(0, keyPair);
+        // Add change output to the Psbt instance
+        psbt.addOutput({
+            address: fromAddress,
+            value: totalValue - amount - fee,
+        });
+
+        // Sign all the inputs
+        psbt.signAllInputs(keyPair);
 
         // Finalize the Psbt instance
         psbt.finalizeAllInputs();
 
         // Return the signed transaction as hex
-        console.log("Signed transaction:", psbt.extractTransaction().toHex());
         return psbt.extractTransaction().toHex();
     }
 
@@ -136,7 +143,6 @@ export class TransactionService {
         const urlRoute = appNetwork === networks.testnet ? "/testnet" : "";
         // Use a blockchain explorer API to get unspent outputs (UTXOs) for the given address
         const url = `https://blockstream.info${urlRoute}/api/address/${address}/utxo`;
-        console.log("URL:", url);
 
         try {
             const response = await fetch(url);
