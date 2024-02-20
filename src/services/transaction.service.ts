@@ -1,7 +1,6 @@
 import BIP32Factory from 'bip32';
-import { Network, Psbt, Transaction, crypto, networks, payments, script } from 'bitcoinjs-lib';
+import { Network, Psbt, Transaction, crypto, payments, script } from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
-import { TransactionResponse } from '../types/interface';
 
 export class TransactionService {
     public static decodeTransactionHex(hex: string) {
@@ -90,13 +89,13 @@ export class TransactionService {
         // Derive the key pair from the root key
         const keyPair = rootKey.derivePath(`m/44'/0'/0'/0/0'`);
 
-        // Get unspent outputs for the from address
-        const utxos = await this.getUnspentBitcoinOutputs(fromAddress, appNetwork);
-
         // Calculate the total value of the unspent outputs
-        const totalValue = utxos.reduce((prev, curr) => prev + curr.value, 0);
+        const totalValue = 113593;
         // Check if the total value is greater than the amount + fee
         if (totalValue < amount + fee) throw new Error('Insufficient funds');
+
+        const transactionHex =
+            '02000000000101b30af604ff8d8ead9f4225638953e02dd507b382e2cfb4c3fc75b4a74c0b64400000000000fdffffff02b9bb01000000000017a91432971b01a505e62b860ed9c960f98b64252b294287269137070100000017a914715329031bfb1b6758222baf8f93ef35f931832e87024730440220320b421d1168a440e1b937e98fa5baa84e857846409605ac17c557df6132ac4202205555ede114d2c520f22907aa8abf197a69851c9deb7c3ed343ddde7192dfe65301210314e15958427ad49ba9c2a886cc8ce399adbf14a8c4721deaad78d45129be4f72384e2700';
 
         // Get prevout script
         const prevoutScript = payments.p2sh({
@@ -107,16 +106,11 @@ export class TransactionService {
         });
 
         // Add the inputs to the Psbt instance
-        utxos.forEach(utxo => {
-            psbt.addInput({
-                hash: utxo.txid,
-                index: 0,
-                witnessUtxo: {
-                    script: prevoutScript.output!,
-                    value: utxo.value,
-                },
-                redeemScript: prevoutScript.redeem!.output!,
-            });
+        psbt.addInput({
+            hash: '2ceacea9eee801cd4f8d82f73d0b5ee9d3d679a296208cd240388e6a8b640cb8',
+            index: 0,
+            redeemScript: prevoutScript.redeem!.output!,
+            nonWitnessUtxo: Buffer.from(transactionHex, 'hex'),
         });
 
         // Add the output to the Psbt instance
@@ -132,7 +126,7 @@ export class TransactionService {
         });
 
         // Sign all the inputs
-        psbt.signAllInputs(keyPair);
+        psbt.signInput(0, keyPair);
 
         // Finalize the Psbt instance
         psbt.finalizeAllInputs();
@@ -142,19 +136,5 @@ export class TransactionService {
             hex: psbt.extractTransaction().toHex(),
             txid: psbt.extractTransaction().getId(),
         };
-    }
-
-    public static async getUnspentBitcoinOutputs(address: string, appNetwork: Network) {
-        const urlRoute = appNetwork === networks.testnet ? '/testnet' : '';
-        // Use a blockchain explorer API to get unspent outputs (UTXOs) for the given address
-        const url = `https://blockstream.info${urlRoute}/api/address/${address}/utxo`;
-
-        try {
-            const response = await fetch(url);
-            const utxos = await response.json();
-            return utxos as TransactionResponse[];
-        } catch (error) {
-            throw new Error(`Unable to get UTXOs for address: ${address}`);
-        }
     }
 }

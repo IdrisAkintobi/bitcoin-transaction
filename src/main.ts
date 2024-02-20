@@ -59,5 +59,5 @@ const addressWithBalance = '2MwrinsNPrqwqup5G5DQ5BG2XnxjLs8y28z';
         amountToSend,
         fee,
     );
-    console.log('transactionId', transactionData.txid);
+    console.log('transactionId', transactionData);
 })();
