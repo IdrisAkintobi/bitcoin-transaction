@@ -19,7 +19,7 @@ export class TransactionService {
                 script: input.script?.toString("hex"),
                 sequence: input.sequence,
                 ...(input.witness && {
-                    witness: JSON.stringify(input.witness.map((i) => i.toString("hex"))),
+                    witness: input.witness.map((i) => i.toString("hex")),
                 }),
             };
         });
@@ -32,21 +32,23 @@ export class TransactionService {
             };
         });
 
-        return { version, locktime, inputs, outputs };
+        return {
+            version,
+            locktime,
+            inputs,
+            outputs,
+        };
     }
 
     public static scriptHexToASM(hex: string) {
-        // Convert hex script to Buffer
         const scriptBuffer = Buffer.from(hex, "hex");
-
-        // Compile the script
         const parsedScript = script.compile(scriptBuffer);
 
         // Convert the script to ASM
         return script.toASM(parsedScript);
     }
 
-    public static createRedeemScript(preimage: string) {
+    public static createRedeemScriptFromPreimage(preimage: string) {
         // Calculate SHA256 hash of the preimage
         const sha256Hash = crypto.sha256(Buffer.from(preimage, "utf8")).toString("hex");
 
@@ -60,13 +62,13 @@ export class TransactionService {
         return compiledScript.toString("hex");
     }
 
-    public static deriveP2WSHAddress(redeemScriptHex: string, appNetwork: Network): string {
-        // Create a P2WSH (Pay-to-Witness-Script-Hash) address from the redeem script
+    public static deriveP2SHAddress(redeemScriptHex: string, appNetwork: Network): string {
+        // Create a P2SH (Pay-to-Script-Hash) address from the redeem script
         const scriptBuffer = Buffer.from(redeemScriptHex, "hex");
-        const p2wsh = payments.p2wsh({
+        const p2sh = payments.p2sh({
             redeem: { output: scriptBuffer, network: appNetwork },
         });
-        return p2wsh.address as string;
+        return p2sh.address as string;
     }
 
     public static async createSignedTransaction(
@@ -96,8 +98,8 @@ export class TransactionService {
         // Check if the total value is greater than the amount + fee
         if (totalValue < amount + fee) throw new Error("Insufficient funds");
 
-        // Make sure the scriptPubKey matches the scriptPubKey in the prevout
-        const getRedeemScript = payments.p2sh({
+        // Get prevout script
+        const prevoutScript = payments.p2sh({
             redeem: payments.p2wpkh({
                 pubkey: keyPair.publicKey,
                 network: appNetwork,
@@ -110,10 +112,10 @@ export class TransactionService {
                 hash: utxo.txid,
                 index: 0,
                 witnessUtxo: {
-                    script: getRedeemScript.output!,
+                    script: prevoutScript.output!,
                     value: utxo.value,
                 },
-                redeemScript: getRedeemScript.redeem!.output!,
+                redeemScript: prevoutScript.redeem!.output!,
             });
         });
 
@@ -135,8 +137,11 @@ export class TransactionService {
         // Finalize the Psbt instance
         psbt.finalizeAllInputs();
 
-        // Return the signed transaction as hex
-        return psbt.extractTransaction().toHex();
+        // Return the signed transaction hex and transaction id
+        return {
+            hex: psbt.extractTransaction().toHex(),
+            txid: psbt.extractTransaction().getId(),
+        };
     }
 
     public static async getUnspentBitcoinOutputs(address: string, appNetwork: Network) {
